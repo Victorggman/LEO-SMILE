@@ -79,8 +79,11 @@ def main_menu():
   {G}[7]{RS} Directory Bruteforcer
   {G}[8]{RS} SQL Injection Scanner
 
+{BR}ADVANCED:
+  {G}[9]{RS} Port Knocking        {R}← NEW!{RS}
+
 {BR}INFORMATION:
-  {G}[9]{RS} About
+  {G}[10]{RS} About
   {G}[0]{RS} Exit
 {C}{'='*80}{RS}
 """)
@@ -592,6 +595,92 @@ def sql_scan_level(level):
             print(f"{G}[+]{RS} Saved to {BR}{filename}{RS}")
     else:
         print(f"\n{G}[+] No SQL injection vulnerabilities found{RS}")
+    
+    input(f"\n{C}Press Enter to continue...{RS}")
+
+# ============================================================
+# PORT KNOCKING TOOL
+# ============================================================
+
+def port_knocking():
+    """Port knocking - Send packets to specific ports in sequence"""
+    print(f"\n{C}{'='*70}{RS}")
+    print(f"{BR}{Y}{' ' * 20}PORT KNOCKING TOOL{RS}")
+    print(f"{C}{'='*70}{RS}")
+    
+    print(f"{Y}[!] Port knocking sends packets to specific ports in sequence{RS}")
+    print(f"{Y}[!] Used to open firewall ports that are otherwise closed{RS}")
+    print(f"{Y}[!] ONLY USE ON SYSTEMS YOU OWN OR HAVE AUTHORIZATION FOR!{RS}")
+    print(f"{C}{'-'*60}{RS}")
+    
+    target = input(f"\n{Y}[?]{RS} Target IP: ").strip()
+    if not target:
+        print(f"{R}[!] No target specified{RS}")
+        return
+    
+    print(f"\n{G}[1]{RS} Use default knock sequence (7000,8000,9000)")
+    print(f"{G}[2]{RS} Custom knock sequence")
+    
+    choice = input(f"\n{Y}[?]{RS} Choose (1-2): ").strip()
+    
+    if choice == "1":
+        ports = [7000, 8000, 9000]
+    elif choice == "2":
+        ports_input = input(f"{Y}[?]{RS} Enter ports (comma separated, e.g., 1000,2000,3000): ").strip()
+        try:
+            ports = [int(p.strip()) for p in ports_input.split(',')]
+        except:
+            print(f"{R}[!] Invalid port format{RS}")
+            return
+    else:
+        print(f"{R}[!] Invalid choice{RS}")
+        return
+    
+    protocol = input(f"{Y}[?]{RS} Protocol (tcp/udp, default tcp): ").strip().lower() or "tcp"
+    delay = float(input(f"{Y}[?]{RS} Delay between knocks (seconds, default 0.5): ").strip() or "0.5")
+    
+    print(f"\n{G}[*] Knocking on {target}...{RS}")
+    print(f"{C}Ports: {ports}{RS}")
+    print(f"{C}Protocol: {protocol}{RS}")
+    print(f"{C}Delay: {delay}s{RS}")
+    print(f"{C}{'-'*60}{RS}")
+    
+    for i, port in enumerate(ports, 1):
+        try:
+            if protocol == "udp":
+                sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                sock.settimeout(1)
+                sock.sendto(f"knock{i}".encode(), (target, port))
+                sock.close()
+            else:
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(1)
+                sock.connect_ex((target, port))
+                sock.close()
+            
+            print(f"{G}[+] Knock {i}/{len(ports)} on port {port} ({protocol}){RS}")
+            time.sleep(delay)
+        except Exception as e:
+            print(f"{R}[-] Failed on port {port}: {e}{RS}")
+    
+    print(f"\n{G}[+] Port knocking complete!{RS}")
+    print(f"{Y}[!] If the target has port knocking enabled, the desired port should now be open{RS}")
+    
+    # Optional: check if a port opened
+    check = input(f"\n{Y}[?]{RS} Check if a port opened? (y/n): ").strip().lower()
+    if check == 'y':
+        check_port = int(input(f"{Y}[?]{RS} Enter port to check: ").strip())
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(2)
+            result = sock.connect_ex((target, check_port))
+            sock.close()
+            if result == 0:
+                print(f"{G}[+] Port {check_port} is OPEN!{RS}")
+            else:
+                print(f"{Y}[-] Port {check_port} is still closed{RS}")
+        except:
+            print(f"{R}[!] Error checking port{RS}")
     
     input(f"\n{C}Press Enter to continue...{RS}")
 
@@ -1239,6 +1328,7 @@ def about():
     print(f"  {G}• Subdomain scanner (1000+ subdomains){RS}")
     print(f"  {G}• Directory bruteforcer (1000+ directories){RS}")
     print(f"  {G}• SQL Injection scanner (Light/Medium/Extreme){RS}")
+    print(f"  {G}• Port Knocking tool{RS}")
     print(f"  {G}• Max 90 threads for SQL injection{RS}")
     print(f"  {G}• 100+ XSS payloads{RS}")
     print(f"  {G}• Progress tracking with ETA{RS}")
@@ -1315,6 +1405,8 @@ def main():
             elif choice == "8":
                 sql_injection_scanner()
             elif choice == "9":
+                port_knocking()
+            elif choice == "10":
                 about()
             elif choice == "0":
                 print(f"\n{G}[+]{RS} Goodbye!")
