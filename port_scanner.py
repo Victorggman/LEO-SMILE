@@ -15,6 +15,7 @@ import xss_payloads
 import subdomains
 import admin_panels
 import directories
+import sql_payloads  # <-- ADD THIS IMPORT
 
 R = '\033[91m'
 G = '\033[92m'
@@ -64,10 +65,11 @@ def main_menu():
   {G}[5]{RS} Admin Panel Finder
   {G}[6]{RS} Subdomain Scanner
   {G}[7]{RS} Directory Bruteforcer
+  {G}[8]{RS} SQL Injection Scanner  {R}← NEW!{RS}
 
 {BR}INFORMATION:
-  {G}[8]{RS} About
-  {G}[9]{RS} Exit
+  {G}[9]{RS} About
+  {G}[0]{RS} Exit
 {C}{'='*80}{RS}
 """)
     print(f"\n {BR}{G}┌──({C}Iceman{G}㉿{M}new hacking era!{G})-[~]{RS}")
@@ -396,6 +398,96 @@ def custom_scan():
     print(f"\n{C}{'='*60}{RS}")
     input(f"{C}Press Enter to start...{RS}")
     run_port_scan(host, start, end, threads, show_version)
+
+# ============================================================
+# SQL INJECTION SCANNER (NEW)
+# ============================================================
+
+def sql_injection_scanner():
+    """SQL Injection Scanner using sql_payloads.py"""
+    print(f"\n{C}{'='*70}{RS}")
+    print(f"{BR}{Y}{' ' * 20}SQL INJECTION SCANNER{RS}")
+    print(f"{C}{'='*70}{RS}")
+    
+    target = get_target()
+    
+    # Get payloads from sql_payloads module
+    payloads = sql_payloads.get_sqli_payloads()
+    print(f"{G}[*] Loaded {len(payloads)} SQL injection payloads{RS}")
+    
+    params = ['id', 'page', 'user', 'q', 'search', 'login', 'email', 'username', 'pass', 'pwd']
+    print(f"{G}[*] Testing {len(params)} parameters{RS}")
+    print(f"{C}{'-'*60}{RS}")
+    
+    vulnerabilities = []
+    total_tests = len(payloads) * len(params)
+    tested = 0
+    
+    for param in params:
+        for payload in payloads:
+            tested += 1
+            progress = (tested / total_tests) * 100
+            sys.stdout.write(f"\r{Y}Progress:{RS} {progress:.1f}% ({tested}/{total_tests})")
+            sys.stdout.flush()
+            
+            try:
+                test_url = f"{target}?{param}={urllib.parse.quote(payload)}"
+                response = requests.get(test_url, timeout=5, verify=False)
+                
+                sql_errors = ['sql', 'mysql', 'syntax error', 'database error', 
+                             'unclosed quotation', 'odbc', 'driver', 'db2',
+                             'oracle', 'sql server', 'postgresql', 'sqlite',
+                             'you have an error', 'warning: mysql', 'mysqli',
+                             'division by zero', 'column not found', 'table not found']
+                
+                if any(error in response.text.lower() for error in sql_errors):
+                    vulnerabilities.append({
+                        'param': param,
+                        'payload': payload,
+                        'url': test_url
+                    })
+                    print(f"\n{R}[!] SQLi Found! Param: {param} -> {payload[:40]}{RS}")
+            except:
+                pass
+    
+    print(f"\n\n{C}{'='*70}{RS}")
+    print(f"{BR}{G}SCAN COMPLETE{RS}")
+    print(f"{C}{'='*70}{RS}")
+    print(f"{G}Tests:{RS} {total_tests}")
+    print(f"{G}Vulnerabilities:{RS} {BR}{Y}{len(vulnerabilities)}{RS}")
+    
+    if vulnerabilities:
+        print(f"\n{R}[!] SQL Injection Vulnerabilities Found:{RS}")
+        print(f"{C}{'-'*80}{RS}")
+        for i, v in enumerate(vulnerabilities, 1):
+            print(f"\n{Y}[{i}]{RS} Parameter: {C}{v['param']}{RS}")
+            print(f"    Payload: {Y}{v['payload']}{RS}")
+            print(f"    URL: {M}{v['url']}{RS}")
+        
+        save = input(f"\n{Y}[?]{RS} Save results? (y/n): ").strip().lower()
+        if save == 'y':
+            filename = f"sqli_scan_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+            with open(filename, 'w') as f:
+                f.write(f"SQL Injection Scan Results\n")
+                f.write(f"Target: {target}\n")
+                f.write(f"Date: {datetime.now()}\n")
+                f.write(f"Total Tests: {total_tests}\n")
+                f.write(f"Vulnerabilities Found: {len(vulnerabilities)}\n")
+                f.write(f"{'-'*60}\n\n")
+                for v in vulnerabilities:
+                    f.write(f"Parameter: {v['param']}\n")
+                    f.write(f"Payload: {v['payload']}\n")
+                    f.write(f"URL: {v['url']}\n")
+                    f.write(f"{'-'*40}\n")
+            print(f"{G}[+]{RS} Saved to {BR}{filename}{RS}")
+    else:
+        print(f"\n{G}[+] No SQL injection vulnerabilities found{RS}")
+    
+    input(f"\n{C}Press Enter to continue...{RS}")
+
+# ============================================================
+# EXISTING FUNCTIONS
+# ============================================================
 
 def test_xss_payload(url, payload, params):
     try:
@@ -1036,6 +1128,7 @@ def about():
     print(f"  {G}• Admin panel finder (600+ paths){RS}")
     print(f"  {G}• Subdomain scanner (1000+ subdomains){RS}")
     print(f"  {G}• Directory bruteforcer (1000+ directories){RS}")
+    print(f"  {G}• SQL Injection scanner (500+ payloads){RS}")
     print(f"  {G}• 100+ XSS payloads{RS}")
     print(f"  {G}• Progress tracking with ETA{RS}")
     print(f"  {G}• Save results to file{RS}")
@@ -1109,8 +1202,10 @@ def main():
             elif choice == "7":
                 directory_bruteforcer()
             elif choice == "8":
-                about()
+                sql_injection_scanner()
             elif choice == "9":
+                about()
+            elif choice == "0":
                 print(f"\n{G}[+]{RS} Goodbye!")
                 sys.exit(0)
             else:
