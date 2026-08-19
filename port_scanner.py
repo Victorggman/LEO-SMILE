@@ -8,11 +8,13 @@ import sys
 import re
 import urllib.request
 import urllib.parse
+import requests
 from datetime import datetime
 import port_versions
 import xss_payloads
 import subdomains
-import requests
+import admin_panels
+import directories
 
 R = '\033[91m'
 G = '\033[92m'
@@ -61,7 +63,7 @@ def main_menu():
   {G}[4]{RS} XSS Scanner
   {G}[5]{RS} Admin Panel Finder
   {G}[6]{RS} Subdomain Scanner
-  {G}[7]{RS} Directory Bruteforce (Coming Soon)
+  {G}[7]{RS} Directory Bruteforcer
 
 {BR}INFORMATION:
   {G}[8]{RS} About
@@ -520,7 +522,7 @@ def admin_panel_finder():
     print(f"\n{Y}[?]{RS} Select scan mode:")
     print(f"  {G}[1]{RS} Quick (100 random paths)")
     print(f"  {G}[2]{RS} Normal (500 paths)")
-    print(f"  {G}[3]{RS} Full (All {len(admin_panels.get_admin_panels())} paths)")
+    print(f"  {G}[3]{RS} Full (All {admin_panels.get_panel_count()} paths)")
     print(f"  {G}[4]{RS} Custom (Enter your own wordlist file)")
     
     while True:
@@ -576,9 +578,9 @@ def admin_panel_finder():
                 test_url = target + path
                 
                 try:
-                    start_time = time.time()
+                    start_time_req = time.time()
                     response = requests.get(test_url, timeout=5, allow_redirects=False)
-                    elapsed = time.time() - start_time
+                    elapsed = time.time() - start_time_req
                     
                     status = response.status_code
                     
@@ -827,6 +829,198 @@ def subdomain_scanner():
     
     input(f"\n{C}Press Enter to continue...{RS}")
 
+def directory_bruteforcer():
+    clear()
+    banner()
+    print(f"\n{C}{'='*70}{RS}")
+    print(f"{BR}{Y}{' ' * 15}DIRECTORY BRUTEFORCER{RS}")
+    print(f"{C}{'='*70}{RS}")
+    
+    target = get_target()
+    if not target.endswith('/'):
+        target += '/'
+    
+    print(f"\n{Y}[?]{RS} Select scan mode:")
+    print(f"  {G}[1]{RS} Quick (100 random paths)")
+    print(f"  {G}[2]{RS} Normal (500 paths)")
+    print(f"  {G}[3]{RS} Full (All {directories.get_directory_count()} paths)")
+    print(f"  {G}[4]{RS} Custom (Enter your own wordlist file)")
+    
+    while True:
+        mode = input(f"\n{Y}[?]{RS} Choose (1-4): ").strip()
+        if mode in ['1', '2', '3', '4']:
+            break
+        print(f"{R}[!]{RS} Invalid choice")
+    
+    if mode == '1':
+        wordlist = directories.get_directories()[:100]
+    elif mode == '2':
+        wordlist = directories.get_directories()[:500]
+    elif mode == '3':
+        wordlist = directories.get_directories()
+    elif mode == '4':
+        file_path = input(f"\n{Y}[?]{RS} Enter wordlist file path: ").strip()
+        try:
+            with open(file_path, 'r') as f:
+                wordlist = [line.strip() for line in f if line.strip()]
+            print(f"{G}[+]{RS} Loaded {len(wordlist)} paths from file")
+        except:
+            print(f"{R}[!]{RS} Could not load file, using default list")
+            wordlist = directories.get_directories()
+    
+    print(f"\n{Y}[?]{RS} Enter max threads (default 50): ")
+    try:
+        threads = int(input().strip())
+        if threads <= 0:
+            threads = 50
+    except:
+        threads = 50
+    
+    print(f"\n{Y}[?]{RS} Filter results:")
+    print(f"  {G}[1]{RS} Show all status codes")
+    print(f"  {G}[2]{RS} Only show 200 OK")
+    print(f"  {G}[3]{RS} Only show 403 Forbidden")
+    print(f"  {G}[4]{RS} Only show redirects (3xx)")
+    
+    while True:
+        filter_choice = input(f"\n{Y}[?]{RS} Choose (1-4): ").strip()
+        if filter_choice in ['1', '2', '3', '4']:
+            break
+        print(f"{R}[!]{RS} Invalid choice")
+    
+    print(f"\n{C}{'='*60}{RS}")
+    print(f"{BR}{Y}SCANNING DIRECTORIES{RS}")
+    print(f"{C}{'='*60}{RS}")
+    print(f"{G}Target:{RS} {target}")
+    print(f"{G}Paths to check:{RS} {len(wordlist)}")
+    print(f"{G}Threads:{RS} {threads}")
+    print(f"{G}Started:{RS} {datetime.now().strftime('%H:%M:%S')}")
+    print(f"{C}{'-'*60}{RS}")
+    
+    found = []
+    lock = threading.Lock()
+    scan_queue = queue.Queue()
+    total = len(wordlist)
+    start_time = time.time()
+    
+    for path in wordlist:
+        scan_queue.put(path)
+    
+    def dir_worker():
+        while not scan_queue.empty():
+            try:
+                path = scan_queue.get_nowait()
+                test_url = target + path
+                
+                try:
+                    start_time_req = time.time()
+                    response = requests.get(test_url, timeout=5, allow_redirects=False)
+                    elapsed = time.time() - start_time_req
+                    
+                    status = response.status_code
+                    
+                    show = False
+                    if filter_choice == '1':
+                        show = True
+                    elif filter_choice == '2' and status == 200:
+                        show = True
+                    elif filter_choice == '3' and status == 403:
+                        show = True
+                    elif filter_choice == '4' and 300 <= status < 400:
+                        show = True
+                    
+                    if show:
+                        with lock:
+                            found.append({
+                                'url': test_url,
+                                'status': status,
+                                'size': len(response.content),
+                                'time': elapsed
+                            })
+                            
+                            if status == 200:
+                                status_color = G
+                            elif 300 <= status < 400:
+                                status_color = Y
+                            elif 400 <= status < 500:
+                                status_color = R
+                            else:
+                                status_color = C
+                            
+                            print(f"{status_color}[{status}]{RS} {C}{test_url}{RS} {B}({len(response.content)} bytes){RS}")
+                except:
+                    pass
+                scan_queue.task_done()
+            except:
+                break
+    
+    thread_list = []
+    for _ in range(min(threads, len(wordlist))):
+        t = threading.Thread(target=dir_worker)
+        t.start()
+        thread_list.append(t)
+    
+    while any(t.is_alive() for t in thread_list):
+        scanned = total - scan_queue.qsize()
+        progress = (scanned / total) * 100
+        elapsed = time.time() - start_time
+        if scanned > 0:
+            eta = (elapsed / scanned) * (total - scanned)
+            eta_str = f"{int(eta//60)}m {int(eta%60)}s"
+        else:
+            eta_str = "Calculating..."
+        
+        print(f"\r{Y}Progress:{RS} {progress:.1f}% ({scanned}/{total}) | {G}ETA:{RS} {eta_str}  ", end="", flush=True)
+        time.sleep(0.5)
+    
+    for t in thread_list:
+        t.join()
+    
+    elapsed = time.time() - start_time
+    
+    print(f"\n{C}{'-'*60}{RS}")
+    print(f"{BR}{G}SCAN COMPLETED{RS}")
+    print(f"{C}{'='*60}{RS}")
+    print(f"{G}Time:{RS} {elapsed:.2f}s")
+    print(f"{G}Paths checked:{RS} {len(wordlist)}")
+    print(f"{G}Found:{RS} {BR}{Y}{len(found)}{RS}")
+    
+    if found:
+        print(f"\n{BR}{G}FOUND PATHS:{RS}")
+        print(f"{C}{'-'*80}{RS}")
+        print(f" {BR}Status  URL{RS}")
+        print(f"{C}{'-'*80}{RS}")
+        for item in sorted(found, key=lambda x: x['status']):
+            if item['status'] == 200:
+                status_color = G
+            elif 300 <= item['status'] < 400:
+                status_color = Y
+            elif 400 <= item['status'] < 500:
+                status_color = R
+            else:
+                status_color = C
+            print(f" {status_color}{item['status']}{RS}   {C}{item['url']}{RS} {B}({item['size']} bytes){RS}")
+    else:
+        print(f"\n{Y}[!]{RS} No paths found")
+    
+    print(f"{C}{'='*60}{RS}")
+    
+    save = input(f"\n{Y}[?]{RS} Save results? (y/n): ").strip().lower()
+    if save == 'y':
+        filename = f"directory_scan_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+        with open(filename, 'w') as f:
+            f.write(f"Directory Bruteforce Results\n")
+            f.write(f"Target: {target}\n")
+            f.write(f"Date: {datetime.now()}\n")
+            f.write(f"Paths checked: {len(wordlist)}\n")
+            f.write(f"Found: {len(found)}\n")
+            f.write(f"{'-'*60}\n")
+            for item in found:
+                f.write(f"{item['status']} - {item['url']} ({item['size']} bytes)\n")
+        print(f"{G}[+]{RS} Saved to {BR}{filename}{RS}")
+    
+    input(f"\n{C}Press Enter to continue...{RS}")
+
 def about():
     clear()
     banner()
@@ -834,18 +1028,18 @@ def about():
     print(f"{BR}{Y}{' ' * 25}ABOUT{RS}")
     print(f"{C}{'='*70}{RS}")
     print(f"\n {BR}{C}Multi-Tool v3.0{RS}")
-    print(f" {G}Port Scanner & XSS Vulnerability Detector{RS}")
+    print(f" {G}Complete Security Testing Suite{RS}")
     print(f"\n {BR}Features:{RS}")
     print(f"  {G}• Multi-threaded port scanning{RS}")
     print(f"  {G}• Service version detection{RS}")
     print(f"  {G}• XSS vulnerability scanning (4 modes){RS}")
-    print(f"  {G}• Admin panel finder{RS}")
-    print(f"  {G}• Subdomain scanner{RS}")
-    print(f"  {G}• 1000+ subdomain wordlist{RS}")
+    print(f"  {G}• Admin panel finder (600+ paths){RS}")
+    print(f"  {G}• Subdomain scanner (1000+ subdomains){RS}")
+    print(f"  {G}• Directory bruteforcer (1000+ directories){RS}")
     print(f"  {G}• 100+ XSS payloads{RS}")
-    print(f"  {G}• Progress tracking{RS}")
-    print(f"  {G}• Save results{RS}")
-    print(f"  {G}• Colorful output{RS}")
+    print(f"  {G}• Progress tracking with ETA{RS}")
+    print(f"  {G}• Save results to file{RS}")
+    print(f"  {G}• Colorful terminal output{RS}")
     print(f"\n {BR}Author:{RS} {C}Iceman{RS}")
     print(f" {BR}Version:{RS} 3.0")
     print(f"\n{C}{'='*70}{RS}")
@@ -913,8 +1107,7 @@ def main():
             elif choice == "6":
                 subdomain_scanner()
             elif choice == "7":
-                print(f"\n{Y}[!]{RS} Coming soon...")
-                time.sleep(1)
+                directory_bruteforcer()
             elif choice == "8":
                 about()
             elif choice == "9":
