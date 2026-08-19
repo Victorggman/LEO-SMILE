@@ -10,6 +10,7 @@ import urllib.request
 import urllib.parse
 import requests
 from datetime import datetime
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # ============================================================
 # SUPPRESS SSL WARNINGS
@@ -35,6 +36,8 @@ C = '\033[96m'
 W = '\033[97m'
 BR = '\033[1m'
 RS = '\033[0m'
+
+MAX_THREADS = 90  # Maximum threads for SQL injection
 
 def clear():
     os.system('cls' if os.name == 'nt' else 'clear')
@@ -421,7 +424,7 @@ def custom_scan():
     run_port_scan(host, start, end, threads, show_version)
 
 # ============================================================
-# SQL INJECTION SCANNER WITH LEVELS
+# SQL INJECTION SCANNER WITH MAX 90 THREADS
 # ============================================================
 
 def sql_injection_scanner():
@@ -445,7 +448,7 @@ def sql_injection_scanner():
             time.sleep(1)
 
 def sql_scan_level(level):
-    """Run SQL Injection scan at specified level"""
+    """Run SQL Injection scan at specified level with MAX 90 threads"""
     
     # Define payload levels
     light_payloads = [
@@ -478,16 +481,19 @@ def sql_scan_level(level):
         mode_name = "LIGHT"
         mode_color = G
         params = ['id', 'page', 'user', 'q']
+        threads_to_use = min(30, len(payloads))
     elif level == 'medium':
         payloads = medium_payloads
         mode_name = "MEDIUM"
         mode_color = Y
         params = ['id', 'page', 'user', 'q', 'search', 'login', 'email']
+        threads_to_use = min(60, len(payloads))
     else:  # extreme
         payloads = extreme_payloads
         mode_name = "EXTREME"
         mode_color = R
         params = ['id', 'page', 'user', 'q', 'search', 'login', 'email', 'username', 'pass', 'pwd']
+        threads_to_use = min(MAX_THREADS, len(payloads))
     
     print(f"\n{C}{'='*70}{RS}")
     print(f"{BR}{mode_color}{' ' * 20}SQL INJECTION SCANNER - {mode_name} MODE{RS}")
@@ -498,39 +504,59 @@ def sql_scan_level(level):
     print(f"{G}[*] Mode:{RS} {mode_color}{mode_name}{RS}")
     print(f"{G}[*] Payloads:{RS} {len(payloads)}")
     print(f"{G}[*] Parameters:{RS} {len(params)}")
+    print(f"{G}[*] Threads:{RS} {threads_to_use} (Max: {MAX_THREADS})")
     print(f"{G}[*] Started:{RS} {datetime.now().strftime('%H:%M:%S')}")
     print(f"{C}{'-'*60}{RS}")
     
     vulnerabilities = []
+    lock = threading.Lock()
     total_tests = len(payloads) * len(params)
     tested = 0
     
-    for param in params:
-        for payload in payloads:
-            tested += 1
-            progress = (tested / total_tests) * 100
-            sys.stdout.write(f"\r{Y}Progress:{RS} {progress:.1f}% ({tested}/{total_tests})")
-            sys.stdout.flush()
+    def test_sqli(param, payload):
+        nonlocal tested
+        try:
+            test_url = f"{target}?{param}={urllib.parse.quote(payload)}"
+            response = requests.get(test_url, timeout=5, verify=False)
             
-            try:
-                test_url = f"{target}?{param}={urllib.parse.quote(payload)}"
-                response = requests.get(test_url, timeout=5, verify=False)
-                
-                sql_errors = ['sql', 'mysql', 'syntax error', 'database error', 
-                             'unclosed quotation', 'odbc', 'driver', 'db2',
-                             'oracle', 'sql server', 'postgresql', 'sqlite',
-                             'you have an error', 'warning: mysql', 'mysqli',
-                             'division by zero', 'column not found', 'table not found']
-                
-                if any(error in response.text.lower() for error in sql_errors):
+            sql_errors = ['sql', 'mysql', 'syntax error', 'database error', 
+                         'unclosed quotation', 'odbc', 'driver', 'db2',
+                         'oracle', 'sql server', 'postgresql', 'sqlite',
+                         'you have an error', 'warning: mysql', 'mysqli',
+                         'division by zero', 'column not found', 'table not found']
+            
+            if any(error in response.text.lower() for error in sql_errors):
+                with lock:
                     vulnerabilities.append({
                         'param': param,
                         'payload': payload,
                         'url': test_url
                     })
-                    print(f"\n{R}[!] SQLi Found! Param: {param} -> {payload[:40]}{RS}")
-            except:
-                pass
+                return True
+        except:
+            pass
+        
+        with lock:
+            tested += 1
+            progress = (tested / total_tests) * 100
+            sys.stdout.write(f"\r{Y}Progress:{RS} {progress:.1f}% ({tested}/{total_tests})")
+            sys.stdout.flush()
+        return False
+    
+    # Create task list
+    tasks = []
+    for param in params:
+        for payload in payloads:
+            tasks.append((param, payload))
+    
+    # Execute with ThreadPoolExecutor (max 90 threads)
+    with ThreadPoolExecutor(max_workers=threads_to_use) as executor:
+        futures = {executor.submit(test_sqli, param, payload): (param, payload) for param, payload in tasks}
+        
+        for future in as_completed(futures):
+            param, payload = futures[future]
+            if future.result():
+                print(f"\n{R}[!] SQLi Found! Param: {param} -> {payload[:40]}{RS}")
     
     print(f"\n\n{C}{'='*70}{RS}")
     print(f"{BR}{G}SCAN COMPLETE - {mode_name} MODE{RS}")
@@ -555,6 +581,7 @@ def sql_scan_level(level):
                 f.write(f"Mode: {mode_name}\n")
                 f.write(f"Date: {datetime.now()}\n")
                 f.write(f"Total Tests: {total_tests}\n")
+                f.write(f"Threads: {threads_to_use}\n")
                 f.write(f"Vulnerabilities Found: {len(vulnerabilities)}\n")
                 f.write(f"{'-'*60}\n\n")
                 for v in vulnerabilities:
@@ -1212,6 +1239,7 @@ def about():
     print(f"  {G}• Subdomain scanner (1000+ subdomains){RS}")
     print(f"  {G}• Directory bruteforcer (1000+ directories){RS}")
     print(f"  {G}• SQL Injection scanner (Light/Medium/Extreme){RS}")
+    print(f"  {G}• Max 90 threads for SQL injection{RS}")
     print(f"  {G}• 100+ XSS payloads{RS}")
     print(f"  {G}• Progress tracking with ETA{RS}")
     print(f"  {G}• Save results to file{RS}")
